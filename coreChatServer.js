@@ -5,7 +5,7 @@ var CoreChatServer = function (ref) {
     this._ref = ref;
     this.rooms = {};
     
-    this._ref.authWithCustomToken("BKE9PP6DP4k06Es10nD6Rvh9443Fz7XBstb6fg54", (function (err, auth) {
+    this._ref.authWithCustomToken(process.env.FIREBASE_SECRET, (function (err, auth) {
         console.log(arguments);
         
         this._outboxRef = ref.child("outbox");
