@@ -1,6 +1,6 @@
 # airchat-worker
 
-Set FIREBASE_SECRET and FIREBASE_URL in .env file or environemnt to run.
+Set FIREBASE_SECRET and FIREBASE_URL in .env file or environment to run.
 
 ### Debug Environmental Variables
 
