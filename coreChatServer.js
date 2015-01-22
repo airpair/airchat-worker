@@ -12,6 +12,8 @@ var CoreChatServer = function (ref) {
         
         this._outboxRef = ref.child("outbox");
         this._transfersRef = ref.child("transfers");
+
+        ref.child("members/byTag").remove();
             
         // Watch for new outgoing messages
         this._handleMessages();
@@ -129,20 +131,43 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
                     
             self.memberPages[memberId] = rawMember.page.url;   
         }
-    } else if (rawMember.page) {
-        _.forEach(rawMember.tags, function (t, tag) {
+        
+        if (rawMember.tags) {
+            _.forEach(rawMember.tags, function (t, tag) {
+                console.log("adding tag", tag, memberId, t)
+                if (t)
+                    self._ref
+                        .child("members/byTag")
+                        .child(tag)
+                        .child(memberId)
+                        .set(true);
+                else
+                    self._ref
+                        .child("members/byTag")
+                        .child(tag)
+                        .child(memberId)
+                        .remove()
+            });
+        }
+    } else if (rawMember.status == "offline") {
+        if (rawMember.page) {
             self._ref
-                .child("members/byTag")
-                .child(tag)
+                .child("members/byPage")
+                .child(rawMember.page.url)
                 .child(memberId)
                 .remove();
-        });
-
-        self._ref
-            .child("members/byPage")
-            .child(rawMember.page.url)
-            .child(memberId)
-            .remove();
+        }
+        
+        if (rawMember.tags) {
+            _.forEach(rawMember.tags, function (t, tag) {
+                console.log("removing tag", tag, memberId)
+                self._ref
+                    .child("members/byTag")
+                    .child(tag)
+                    .child(memberId)
+                    .remove();
+            });
+        }
     }
 }
 
