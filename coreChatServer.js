@@ -116,20 +116,21 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
         });
         
         if (rawMember.page) {
+            var page = rawMember.page.url.replace(/\./g, '');
             self._ref
                 .child("members/byPage")
-                .child(rawMember.page.url || "Unknown")
+                .child(page || "Unknown")
                 .child(memberId)
                 .setWithPriority(true, rawMember.page.timestamp);
                 
-            if (lastPage && lastPage !== rawMember.page.url)
+            if (lastPage && lastPage !== page)
                 self._ref
                     .child("members/byPage")
                     .child(lastPage)
                     .child(memberId)
                     .remove();
                     
-            self.memberPages[memberId] = rawMember.page.url;   
+            self.memberPages[memberId] = page;   
         }
         
         if (rawMember.tags) {
@@ -153,7 +154,7 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
         if (rawMember.page) {
             self._ref
                 .child("members/byPage")
-                .child(rawMember.page.url)
+                .child(rawMember.page.url.replace(/\./g, ''))
                 .child(memberId)
                 .remove();
         }
