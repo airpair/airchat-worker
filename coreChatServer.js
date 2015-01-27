@@ -13,7 +13,11 @@ var CoreChatServer = function (ref) {
         this._outboxRef = ref.child("outbox");
         this._transfersRef = ref.child("transfers");
 
-        ref.child("members/byTag").remove();
+        ref.child("members/byRole").remove();
+        
+        // Clean up if we shut down the server
+        ref.child("members/byRole").onDisconnect().remove();
+        ref.child("members/byPage").onDisconnect().remove();
             
         // Watch for new outgoing messages
         this._handleMessages();
@@ -22,10 +26,18 @@ var CoreChatServer = function (ref) {
         this._handleMembersByPage();
         
         ref.child("rooms/byRID").on("child_added", (function (snapshot) {
-            var val = snapshot.val();
-            val.memberCount = Object.keys(val.members).length;
-            this.rooms[snapshot.key()] = val;
+            snapshot.ref().on("value", (function (snapshot) {
+                if (!snapshot.val()) {
+                    snapshot.ref().off("value");
+                    return;
+                }
+                var val = snapshot.val();
+                val.memberCount = Object.keys(val.members || {}).length;
+                this.rooms[snapshot.key()] = val;  
+            }).bind(this));
         }).bind(this));
+        
+        
         
         ref.child("members/byMID").on("child_added", (function (snapshot) {
             var val = snapshot.val();
@@ -79,20 +91,20 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
     if (rawMember.status !== "offline") {
         var lastPage = self.memberPages[memberId];
         
-        _.forEach(rawMember.tags, function (t, tag) {
-            var tagRef = self._ref
-                .child("members/byTag")
-                .child(tag)
+        _.forEach(rawMember.roles, function (t, role) {
+            var roleRef = self._ref
+                .child("members/byRole")
+                .child(role)
                 .child(memberId);
                 
             if (!t) {
-                tagRef.remove();
+                roleRef.remove();
                 memberRef
-                    .child("tags")
-                    .child(tag)
+                    .child("roles")
+                    .child(role)
                     .remove();
             } else {
-                tagRef.set(true);
+                roleRef.set(true);
             }
         });
         
@@ -133,19 +145,19 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
             self.memberPages[memberId] = page;   
         }
         
-        if (rawMember.tags) {
-            _.forEach(rawMember.tags, function (t, tag) {
-                console.log("adding tag", tag, memberId, t)
+        if (rawMember.roles) {
+            _.forEach(rawMember.roles, function (t, role) {
+                console.log("adding role", role, memberId, t)
                 if (t)
                     self._ref
-                        .child("members/byTag")
-                        .child(tag)
+                        .child("members/byRole")
+                        .child(role)
                         .child(memberId)
                         .set(true);
                 else
                     self._ref
-                        .child("members/byTag")
-                        .child(tag)
+                        .child("members/byRole")
+                        .child(role)
                         .child(memberId)
                         .remove()
             });
@@ -159,12 +171,12 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
                 .remove();
         }
         
-        if (rawMember.tags) {
-            _.forEach(rawMember.tags, function (t, tag) {
-                console.log("removing tag", tag, memberId)
+        if (rawMember.roles) {
+            _.forEach(rawMember.roles, function (t, role) {
+                console.log("removing role", role, memberId)
                 self._ref
-                    .child("members/byTag")
-                    .child(tag)
+                    .child("members/byRole")
+                    .child(role)
                     .child(memberId)
                     .remove();
             });
@@ -197,14 +209,14 @@ CoreChatServer.prototype._handleMessages = function () {
             roomsRef = self._ref.child("rooms/byRID"),
             membersToJoin = {},
             roomRef, roomId, member, historyMessageRef;
-            
-        console.log(rawMessage)
         
-        if (rawMessage.type == "member" || (rawMessage.to.split("^^v^^").length > 1 && (!self.rooms[rawMessage.to] || !self.rooms[rawMessage.to].memberCount > 1))) {
+        if (rawMessage.type == "member" || (rawMessage.to.split("^^v^^").length > 1 && (!self.rooms[rawMessage.to] || self.rooms[rawMessage.to].memberCount < 2))) {
+            console.log("room tooing")
             var members = rawMessage.to.split("^^v^^"),
                 toSet = false;
             
             members.forEach(function (memberId, index) {
+                membersToJoin[memberId] = true;
                if (memberId !== rawMessage.from) {
                    rawMessage.to = memberId;
                    toSet = true;
@@ -224,6 +236,7 @@ CoreChatServer.prototype._handleMessages = function () {
         roomRef = roomsRef.child(roomId);
         rawMessage.timestamp = Firebase.ServerValue.TIMESTAMP;
         historyMessageRef = roomRef.child("history").push(rawMessage);
+        console.log(rawMessage)
         messageRef.remove();
         
         membersToJoin[rawMessage.from] = true;
