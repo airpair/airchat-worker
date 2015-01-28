@@ -71,7 +71,7 @@ CoreChatServer.prototype._handleMembers = function () {
         
     setInterval(function () {
         var now = (new Date().getTime());
-        _(self.members).forEach(function (member, id) {
+        _.forEach(self.members, function (member, id) {
             var seen = member.ping? member.ping.seen : 0,
                 diff = now-seen,
                 ref = self._ref.child("members/byMID").child(id);
@@ -292,10 +292,10 @@ CoreChatServer.prototype._handleMessages = function () {
                 mentionsRe = /@([A-Za-z0-9_-]+)/gi;
             
             // Notify for any @notifications
-            while ((member = mentionsRe.exec(rawMessage.body)) !== null)
+            /*while ((member = mentionsRe.exec(rawMessage.body)) !== null)
             {
                 var memberName = member[1];
-                _.foreach(members, function (inRoom, memberId) {
+                _.forEach(members, function (inRoom, memberId) {
                      var member = this.members[memberId];
                      if (memberName && memberName == member.name) {
                         mentions[member.id] = true;
@@ -309,7 +309,7 @@ CoreChatServer.prototype._handleMessages = function () {
                         });   
                      }
                 });
-            }
+            }*/
             
             // Notify for any normal notifications
             membersSnapshot.forEach(function (userSnapshot) {
