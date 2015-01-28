@@ -45,6 +45,12 @@ var CoreChatServer = function (ref) {
             this.members[snapshot.key()] = val;
         }).bind(this));
         
+        ref.child("members/byMID").on("child_changed", (function (snapshot) {
+            var val = snapshot.val();
+            val.id = snapshot.key();
+            this.members[snapshot.key()] = val;
+        }).bind(this));
+        
         ref.child("members/byMID").on("child_removed", (function (snapshot) {
             delete this.members[snapshot.key()];
         }).bind(this));
@@ -62,6 +68,20 @@ CoreChatServer.prototype._handleMembers = function () {
 
     self._ref.child("members/byMID")
         .on('child_added', this._processMember.bind(this));
+        
+    setInterval(function () {
+        var now = (new Date().getTime());
+        _(self.members).forEach(function (member, id) {
+            var seen = member.ping? member.ping.seen : 0,
+                diff = now-seen,
+                ref = self._ref.child("members/byMID").child(id);
+                
+            if (diff > 60e3 && member.status !== "offline") {
+                ref.child("status").set("offline");
+                console.log("Setting member offline", member)
+            }
+        });
+    }, 60e3);
 };
 
 CoreChatServer.prototype._processMember = function (memberSnapshot) {
@@ -127,8 +147,8 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
 			})
         });
         
-        if (rawMember.page) {
-            var page = rawMember.page.url.replace(/\./g, '');
+        if (rawMember.page && rawMember.page.url.indexOf('.') == -1) {
+            var page = rawMember.page.url;
             self._ref
                 .child("members/byPage")
                 .child(page || "Unknown")
@@ -147,7 +167,6 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
         
         if (rawMember.roles) {
             _.forEach(rawMember.roles, function (t, role) {
-                console.log("adding role", role, memberId, t)
                 if (t)
                     self._ref
                         .child("members/byRole")
@@ -173,7 +192,6 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
         
         if (rawMember.roles) {
             _.forEach(rawMember.roles, function (t, role) {
-                console.log("removing role", role, memberId)
                 self._ref
                     .child("members/byRole")
                     .child(role)
