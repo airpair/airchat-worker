@@ -148,19 +148,27 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
         });
         
         if (rawMember.page && rawMember.page.url.indexOf('.') == -1) {
-            var page = rawMember.page.url;
-            self._ref
-                .child("members/byPage")
-                .child(page || "Unknown")
-                .child(memberId)
-                .setWithPriority(true, rawMember.page.timestamp);
-                
-            if (lastPage && lastPage !== page)
+            if (rawMember.status == "online") {
+                var page = rawMember.page.url;
                 self._ref
                     .child("members/byPage")
-                    .child(lastPage)
+                    .child(page || "Unknown")
+                    .child(memberId)
+                    .setWithPriority(true, rawMember.page.timestamp);
+                    
+                if (lastPage && lastPage !== page)
+                    self._ref
+                        .child("members/byPage")
+                        .child(lastPage)
+                        .child(memberId)
+                        .remove();
+            } else {
+                self._ref
+                    .child("members/byPage")
+                    .child(page || "Unknown")
                     .child(memberId)
                     .remove();
+            }
                     
             self.memberPages[memberId] = page;   
         }
