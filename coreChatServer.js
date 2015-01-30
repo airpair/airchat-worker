@@ -261,31 +261,33 @@ CoreChatServer.prototype._handleMessages = function () {
                 mentionsRe = /@([A-Za-z0-9_-]+)/gi;
             
             // Notify for any @notifications
-            while ((member = mentionsRe.exec(rawMessage.body)) !== null)
-            {
-                var memberInitials = member[1];
-
-                self._ref
-                    .child("members/byMID")
-                    .orderByChild("initials")
-                    .equalTo(memberInitials.toUpperCase())
-                    .once("value", function (initialMatchesSnapshot) {
-                        initialMatchesSnapshot.forEach(function (initialMatchSnapshot) {
-                            var id = initialMatchSnapshot.key();
-                            if (members[id]) {
-                                console.log('@mentioned', id);
-                                self._ref.child("members/byMID").child(id).child("notifications").push({
-                                    "type": "mention",
-                                    "info": {
-                                        "to": rawMessage.to,
-                                        "from": rawMessage.from,
-                                        "body": rawMessage.body
-                                    }
-                                });       
-                            }
-                        });
-                    })
-            }
+            process.nextTick(function () {
+                while ((member = mentionsRe.exec(rawMessage.body)) !== null)
+                {
+                    var memberInitials = member[1];
+        
+                    self._ref
+                        .child("members/byMID")
+                        .orderByChild("initials")
+                        .equalTo(memberInitials.toUpperCase())
+                        .once("value", function (initialMatchesSnapshot) {
+                            initialMatchesSnapshot.forEach(function (initialMatchSnapshot) {
+                                var id = initialMatchSnapshot.key();
+                                if (members[id]) {
+                                    console.log('@mentioned', id);
+                                    self._ref.child("members/byMID").child(id).child("notifications").push({
+                                        "type": "mention",
+                                        "info": {
+                                            "to": rawMessage.to,
+                                            "from": rawMessage.from,
+                                            "body": rawMessage.body
+                                        }
+                                    });       
+                                }
+                            });
+                        })
+                } 
+            });
             
             // Notify for any normal notifications
             membersSnapshot.forEach(function (userSnapshot) {
