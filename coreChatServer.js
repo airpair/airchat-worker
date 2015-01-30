@@ -261,7 +261,7 @@ CoreChatServer.prototype._handleMessages = function () {
                 mentionsRe = /@([A-Za-z0-9_-]+)/gi;
             
             // Notify for any @notifications
-            process.nextTick(function () {
+            /*process.nextTick(function () {
                 while ((member = mentionsRe.exec(rawMessage.body)) !== null)
                 {
                     var memberInitials = member[1];
@@ -287,7 +287,7 @@ CoreChatServer.prototype._handleMessages = function () {
                             });
                         })
                 } 
-            });
+            });*/
             
             // Notify for any normal notifications
             membersSnapshot.forEach(function (userSnapshot) {
