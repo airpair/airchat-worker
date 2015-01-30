@@ -4,7 +4,6 @@ var Firebase = require('firebase'),
 var CoreChatServer = function (ref) {
     this._ref = ref;
     this.rooms = {};
-    this.members = {};
     
     this._ref.authWithCustomToken(process.env.FIREBASE_SECRET, (function (err, auth) {
         if (!err)
@@ -23,7 +22,6 @@ var CoreChatServer = function (ref) {
         this._handleMessages();
         this._handleMembers();
         this._handleTransfers();
-        this._handleMembersByPage();
         
         ref.child("rooms/byRID").on("child_added", (function (snapshot) {
             snapshot.ref().on("value", (function (snapshot) {
@@ -35,24 +33,6 @@ var CoreChatServer = function (ref) {
                 val.memberCount = Object.keys(val.members || {}).length;
                 this.rooms[snapshot.key()] = val;  
             }).bind(this));
-        }).bind(this));
-        
-        
-        
-        ref.child("members/byMID").on("child_added", (function (snapshot) {
-            var val = snapshot.val();
-            val.id = snapshot.key();
-            this.members[snapshot.key()] = val;
-        }).bind(this));
-        
-        ref.child("members/byMID").on("child_changed", (function (snapshot) {
-            var val = snapshot.val();
-            val.id = snapshot.key();
-            this.members[snapshot.key()] = val;
-        }).bind(this));
-        
-        ref.child("members/byMID").on("child_removed", (function (snapshot) {
-            delete this.members[snapshot.key()];
         }).bind(this));
     }).bind(this));
 };
@@ -71,17 +51,40 @@ CoreChatServer.prototype._handleMembers = function () {
         
     setInterval(function () {
         var now = (new Date().getTime());
-        _.forEach(self.members, function (member, id) {
-            var seen = member.ping? member.ping.seen : 0,
-                diff = now-seen,
-                ref = self._ref.child("members/byMID").child(id);
-                
-            if (diff > 60e3 && member.status !== "offline") {
-                ref.child("status").set("offline");
-                console.log("Setting member offline", member)
-            }
+        self._ref.child('members/byMID').once("value", function (membersSnapshot) {
+            membersSnapshot.forEach(function (memberSnapshot) {
+                var member = memberSnapshot.val(),
+                    id = memberSnapshot.key(),
+                    seen = member.ping? member.ping.seen : 0,
+                    diff = now-seen,
+                    ref = memberSnapshot.ref();
+                    
+                if (diff > 60e3 && member.status !== "offline") {
+                    ref.child("status").set("offline");
+                    //console.log("Setting member offline", member)
+                } 
+            });
         });
     }, 60e3);
+    
+    setInterval(function () {
+        var byPage = {};
+        self._ref.child("members/byMID").once("value", function (membersSnapshot) {
+            membersSnapshot.forEach(function (memberSnapshot) {
+                var member = memberSnapshot.val(),
+                    memberId = memberSnapshot.key(),
+                    url = member.page? member.page.url.replace(/\./g, '') : false;
+                    
+                if (member.status == "online" && url) {
+                    var page = byPage[url] || {};
+                    page[memberId] = true;
+                    byPage[url] = page;
+                }
+            });
+            self._ref.child("members/byPage").set(byPage);
+            console.log('byPage', byPage)
+        });
+    }, 30e3);
 };
 
 CoreChatServer.prototype._processMember = function (memberSnapshot) {
@@ -146,33 +149,7 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
 			    }
 			})
         });
-        
-        if (rawMember.page && rawMember.page.url.indexOf('.') == -1) {
-            if (rawMember.status == "online") {
-                var page = rawMember.page.url;
-                self._ref
-                    .child("members/byPage")
-                    .child(page || "Unknown")
-                    .child(memberId)
-                    .setWithPriority(true, rawMember.page.timestamp);
-                    
-                if (lastPage && lastPage !== page)
-                    self._ref
-                        .child("members/byPage")
-                        .child(lastPage)
-                        .child(memberId)
-                        .remove();
-            } else {
-                self._ref
-                    .child("members/byPage")
-                    .child(page || "Unknown")
-                    .child(memberId)
-                    .remove();
-            }
-                    
-            self.memberPages[memberId] = page;   
-        }
-        
+    
         if (rawMember.roles) {
             _.forEach(rawMember.roles, function (t, role) {
                 if (t)
@@ -190,14 +167,6 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
             });
         }
     } else if (rawMember.status == "offline") {
-        if (rawMember.page) {
-            self._ref
-                .child("members/byPage")
-                .child(rawMember.page.url.replace(/\./g, ''))
-                .child(memberId)
-                .remove();
-        }
-        
         if (rawMember.roles) {
             _.forEach(rawMember.roles, function (t, role) {
                 self._ref
@@ -208,14 +177,6 @@ CoreChatServer.prototype._processMember = function (memberSnapshot) {
             });
         }
     }
-}
-
-CoreChatServer.prototype._handleMembersByPage = function () {
-    var self = this;
-    self._ref.child("members/byPage").on("child_added", function (pageSnapshot) {
-        pageSnapshot.ref().on("child_added", self._processMemberByPage.bind(self, pageSnapshot));
-        pageSnapshot.ref().on("child_changed", self._processMemberByPage.bind(self, pageSnapshot));
-    }); 
 }
 
 CoreChatServer.prototype._processMemberByPage = function (pageSnapshot, memberSnapshot) {
@@ -296,28 +257,35 @@ CoreChatServer.prototype._handleMessages = function () {
         // Load all members of this room
         roomRef.child("members").once("value", function (membersSnapshot) {
             var mentions = {},
-                members = {},
+                members = membersSnapshot.val(),
                 mentionsRe = /@([A-Za-z0-9_-]+)/gi;
             
             // Notify for any @notifications
-            /*while ((member = mentionsRe.exec(rawMessage.body)) !== null)
+            while ((member = mentionsRe.exec(rawMessage.body)) !== null)
             {
-                var memberName = member[1];
-                _.forEach(members, function (inRoom, memberId) {
-                     var member = this.members[memberId];
-                     if (memberName && memberName == member.name) {
-                        mentions[member.id] = true;
-                        self.ref.child("members/byMID").child(member.id).child("notifications").push({
-                            "type": "mention",
-                            "info": {
-                                "to": rawMessage.to,
-                                "from": rawMessage.from,
-                                "body": rawMessage.body
+                var memberInitials = member[1];
+
+                self._ref
+                    .child("members/byMID")
+                    .orderByChild("initials")
+                    .equalTo(memberInitials.toUpperCase())
+                    .once("value", function (initialMatchesSnapshot) {
+                        initialMatchesSnapshot.forEach(function (initialMatchSnapshot) {
+                            var id = initialMatchSnapshot.key();
+                            if (members[id]) {
+                                console.log('@mentioned', id);
+                                self._ref.child("members/byMID").child(id).child("notifications").push({
+                                    "type": "mention",
+                                    "info": {
+                                        "to": rawMessage.to,
+                                        "from": rawMessage.from,
+                                        "body": rawMessage.body
+                                    }
+                                });       
                             }
-                        });   
-                     }
-                });
-            }*/
+                        });
+                    })
+            }
             
             // Notify for any normal notifications
             membersSnapshot.forEach(function (userSnapshot) {
